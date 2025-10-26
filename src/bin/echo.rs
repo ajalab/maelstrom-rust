@@ -21,44 +21,45 @@ impl EchoNode {
     fn run(mut self) -> Result<()> {
         loop {
             let msg = self.stub.get_message()?;
-            match msg.body.typ.as_str() {
+            let typ = msg.body.typ();
+            match typ {
                 "init" => self.handle_init(&msg)?,
                 "echo" => self.handle_echo(&msg)?,
-                _ => return Err(anyhow::anyhow!("Unknown message type: {}", msg.body.typ)),
+                _ => return Err(anyhow::anyhow!("Unknown message type: {}", typ)),
             }
         }
     }
 
     fn handle_init(&mut self, msg: &Message) -> Result<()> {
-        self.id = msg.body.extra["node_id"].as_str().unwrap().to_string();
+        self.id = msg.body.field_as_str("node_id")?.to_string();
         eprintln!("Initialized node #{}", self.id);
 
         let msg_response = Message {
             src: msg.dest.clone(),
             dest: msg.src.clone(),
-            body: MessageBody {
-                typ: "init_ok".to_string(),
-                msg_id: Some(self.acquire_message_id()),
-                in_reply_to: msg.body.msg_id,
-                extra: HashMap::new(),
-            },
+            body: MessageBody::new(
+                "init_ok",
+                self.acquire_message_id(),
+                msg.body.msg_id(),
+                HashMap::new(),
+            ),
         };
         self.stub.send_message(&msg_response)
     }
 
     fn handle_echo(&mut self, msg: &Message) -> Result<()> {
         let mut extra = HashMap::new();
-        extra.insert("echo".to_string(), msg.body.extra["echo"].clone());
+        extra.insert("echo".to_string(), msg.body.field("echo")?.clone());
 
         let msg_response = Message {
             src: msg.dest.clone(),
             dest: msg.src.clone(),
-            body: MessageBody {
-                typ: "echo_ok".to_string(),
-                msg_id: Some(self.acquire_message_id()),
-                in_reply_to: msg.body.msg_id,
+            body: MessageBody::new(
+                "echo_ok",
+                self.acquire_message_id(),
+                msg.body.msg_id(),
                 extra,
-            },
+            ),
         };
         self.stub.send_message(&msg_response)
     }

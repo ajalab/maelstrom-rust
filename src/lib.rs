@@ -2,6 +2,14 @@ use anyhow::Result;
 use std::collections::HashMap;
 use std::io::{BufRead, StdinLock, StdoutLock, Write};
 
+#[repr(u8)]
+#[derive(Clone, Copy, Debug)]
+pub enum ErrorCode {
+    Crash = 14,
+    KeyDoesNotExist = 20,
+    PreconditionFailed = 22,
+}
+
 #[derive(serde::Deserialize, serde::Serialize, Debug)]
 pub struct Message {
     pub src: String,
@@ -12,12 +20,60 @@ pub struct Message {
 #[derive(serde::Deserialize, serde::Serialize, Debug)]
 pub struct MessageBody {
     #[serde(rename = "type")]
-    pub typ: String,
-    pub msg_id: Option<u64>,
-    pub in_reply_to: Option<u64>,
+    typ: String,
+    msg_id: Option<u64>,
+    in_reply_to: Option<u64>,
 
     #[serde(flatten)]
-    pub extra: HashMap<String, serde_json::Value>,
+    extra: HashMap<String, serde_json::Value>,
+}
+
+impl MessageBody {
+    pub fn new(
+        typ: &str,
+        msg_id: u64,
+        in_reply_to: Option<u64>,
+        extra: HashMap<String, serde_json::Value>,
+    ) -> Self {
+        MessageBody {
+            typ: typ.to_string(),
+            msg_id: Some(msg_id),
+            in_reply_to,
+            extra,
+        }
+    }
+
+    pub fn error(msg_id: u64, in_reply_to: Option<u64>, code: ErrorCode, text: &str) -> Self {
+        let mut extra = HashMap::new();
+        extra.insert("code".to_string(), serde_json::json!(code as u8));
+        extra.insert("text".to_string(), serde_json::json!(text));
+        MessageBody {
+            typ: "error".to_string(),
+            msg_id: Some(msg_id),
+            in_reply_to,
+            extra,
+        }
+    }
+
+    pub fn typ(&self) -> &str {
+        &self.typ
+    }
+
+    pub fn msg_id(&self) -> Option<u64> {
+        self.msg_id
+    }
+
+    pub fn field(&self, key: &str) -> Result<&serde_json::Value> {
+        self.extra
+            .get(key)
+            .ok_or_else(|| anyhow::anyhow!("field '{}' is missing", key))
+    }
+
+    pub fn field_as_str(&self, key: &str) -> Result<&str> {
+        self.field(key)?.as_str().ok_or_else(|| {
+            anyhow::anyhow!("field '{}' is not a string: {:?}", key, self.extra.get(key))
+        })
+    }
 }
 
 pub struct Stub {
