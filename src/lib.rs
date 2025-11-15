@@ -74,6 +74,18 @@ impl MessageBody {
             anyhow::anyhow!("field '{}' is not a string: {:?}", key, self.extra.get(key))
         })
     }
+
+    pub fn field_as_i64(&self, key: &str) -> Result<i64> {
+        self.field(key)?.as_i64().ok_or_else(|| {
+            anyhow::anyhow!("field '{}' is not a number: {:?}", key, self.extra.get(key))
+        })
+    }
+
+    pub fn field_as_u64(&self, key: &str) -> Result<u64> {
+        self.field(key)?.as_u64().ok_or_else(|| {
+            anyhow::anyhow!("field '{}' is not a number: {:?}", key, self.extra.get(key))
+        })
+    }
 }
 
 pub struct Stub {
