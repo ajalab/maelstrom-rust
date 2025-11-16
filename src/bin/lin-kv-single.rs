@@ -1,7 +1,61 @@
-use maelstrom_rust::{ErrorCode, Message, MessageBody, Stub};
+use maelstrom_rust::{ErrorCode, Message, Stub};
 
 use anyhow::Result;
 use std::{collections::HashMap, io};
+
+#[derive(serde::Deserialize, serde::Serialize, Debug)]
+#[serde(tag = "type")]
+#[serde(rename_all = "snake_case")]
+enum Request {
+    Init {
+        msg_id: u64,
+        node_id: String,
+    },
+    Read {
+        msg_id: u64,
+        key: u64,
+    },
+    Write {
+        msg_id: u64,
+        key: u64,
+        value: i64,
+    },
+    Cas {
+        msg_id: u64,
+        key: u64,
+        from: i64,
+        to: i64,
+    },
+}
+
+#[derive(serde::Deserialize, serde::Serialize, Debug)]
+#[serde(tag = "type")]
+#[serde(rename_all = "snake_case")]
+enum Response {
+    InitOk {
+        msg_id: u64,
+        in_reply_to: u64,
+    },
+    ReadOk {
+        msg_id: u64,
+        in_reply_to: u64,
+        value: i64,
+    },
+    WriteOk {
+        msg_id: u64,
+        in_reply_to: u64,
+    },
+    CasOk {
+        msg_id: u64,
+        in_reply_to: u64,
+    },
+    Error {
+        msg_id: u64,
+        in_reply_to: u64,
+        code: ErrorCode,
+        text: String,
+    },
+}
 
 struct LinKvSingleNode {
     stub: Stub,
@@ -23,124 +77,137 @@ impl LinKvSingleNode {
 
     fn run(mut self) -> Result<()> {
         loop {
-            let msg = self.stub.get_message()?;
-            let typ = msg.body.typ();
-            match typ {
-                "init" => self.handle_init(&msg)?,
-                "read" => self.handle_read(&msg)?,
-                "write" => self.handle_write(&msg)?,
-                "cas" => self.handle_cas(&msg)?,
-                _ => return Err(anyhow::anyhow!("Unknown message type: {}", typ)),
+            let Message { src, dest, body } = self.stub.get_message::<Request>()?;
+            match body {
+                Request::Init { msg_id, node_id } => {
+                    self.handle_init(src, dest, msg_id, node_id)?
+                }
+                Request::Read { msg_id, key } => self.handle_read(src, dest, msg_id, key)?,
+                Request::Write { msg_id, key, value } => {
+                    self.handle_write(src, dest, msg_id, key, value)?
+                }
+                Request::Cas {
+                    msg_id,
+                    key,
+                    from,
+                    to,
+                } => self.handle_cas(src, dest, msg_id, key, from, to)?,
             }
         }
     }
 
-    fn handle_read(&mut self, msg: &Message) -> Result<()> {
-        let key = msg.body.field_as_u64("key")?;
-        let value = self.map.get(&key);
+    fn handle_init(
+        &mut self,
+        src: String,
+        dest: String,
+        msg_id: u64,
+        node_id: String,
+    ) -> Result<()> {
+        self.id = node_id;
+        eprintln!("Initialized node #{}", self.id);
+
+        let msg_response = Message {
+            src: dest,
+            dest: src,
+            body: Response::InitOk {
+                msg_id: self.acquire_message_id(),
+                in_reply_to: msg_id,
+            },
+        };
+        self.stub.send_message(&msg_response)
+    }
+
+    fn handle_read(&mut self, src: String, dest: String, msg_id: u64, key: u64) -> Result<()> {
+        let value = self.map.get(&key).copied();
 
         let msg_response_body = if let Some(v) = value {
-            let mut extra = HashMap::new();
-            extra.insert("value".to_string(), serde_json::json!(v));
-            MessageBody::new(
-                "read_ok",
-                self.acquire_message_id(),
-                msg.body.msg_id(),
-                extra,
-            )
+            Response::ReadOk {
+                msg_id: self.acquire_message_id(),
+                in_reply_to: msg_id,
+                value: v,
+            }
         } else {
-            MessageBody::error(
-                self.acquire_message_id(),
-                msg.body.msg_id(),
-                ErrorCode::KeyDoesNotExist,
-                "key does not exist",
-            )
+            Response::Error {
+                msg_id: self.acquire_message_id(),
+                in_reply_to: msg_id,
+                code: ErrorCode::KeyDoesNotExist,
+                text: "key does not exist".to_string(),
+            }
         };
         let msg_response = Message {
-            src: msg.dest.clone(),
-            dest: msg.src.clone(),
+            src: dest.clone(),
+            dest: src.clone(),
             body: msg_response_body,
         };
 
         self.stub.send_message(&msg_response)
     }
 
-    fn handle_write(&mut self, msg: &Message) -> Result<()> {
-        let key = msg.body.field_as_u64("key")?;
-        let value = msg.body.field_as_i64("value")?;
+    fn handle_write(
+        &mut self,
+        src: String,
+        dest: String,
+        msg_id: u64,
+        key: u64,
+        value: i64,
+    ) -> Result<()> {
         self.map.insert(key, value);
 
         let msg_response = Message {
-            src: msg.dest.clone(),
-            dest: msg.src.clone(),
-            body: MessageBody::new(
-                "write_ok",
-                self.acquire_message_id(),
-                msg.body.msg_id(),
-                HashMap::new(),
-            ),
+            src: dest,
+            dest: src,
+            body: Response::WriteOk {
+                msg_id: self.acquire_message_id(),
+                in_reply_to: msg_id,
+            },
         };
         self.stub.send_message(&msg_response)
     }
 
-    fn handle_cas(&mut self, msg: &Message) -> Result<()> {
-        let key = msg.body.field_as_u64("key")?;
-        let from = msg.body.field_as_i64("from")?;
-        let to = msg.body.field_as_i64("to")?;
-
-        let msg_response_body = match self.map.get(&key) {
-            Some(&v) => {
+    fn handle_cas(
+        &mut self,
+        src: String,
+        dest: String,
+        msg_id: u64,
+        key: u64,
+        from: i64,
+        to: i64,
+    ) -> Result<()> {
+        let value = self.map.get(&key).copied();
+        let msg_response_body = match value {
+            Some(v) => {
                 if v != from {
                     let error_text =
                         format!("current value {} does not match 'from' value {}", v, from);
-                    MessageBody::error(
-                        self.acquire_message_id(),
-                        msg.body.msg_id(),
-                        ErrorCode::PreconditionFailed,
-                        &error_text,
-                    )
+                    Response::Error {
+                        msg_id: self.acquire_message_id(),
+                        in_reply_to: msg_id,
+                        code: ErrorCode::PreconditionFailed,
+                        text: error_text,
+                    }
                 } else {
                     self.map.insert(key, to);
-                    MessageBody::new(
-                        "cas_ok",
-                        self.acquire_message_id(),
-                        msg.body.msg_id(),
-                        HashMap::new(),
-                    )
+                    Response::CasOk {
+                        msg_id: self.acquire_message_id(),
+                        in_reply_to: msg_id,
+                    }
                 }
             }
             _ => {
                 let error_text = format!("key '{}' does not exist", key);
-                MessageBody::error(
-                    self.acquire_message_id(),
-                    msg.body.msg_id(),
-                    ErrorCode::KeyDoesNotExist,
-                    &error_text,
-                )
+                Response::Error {
+                    msg_id: self.acquire_message_id(),
+                    in_reply_to: msg_id,
+                    code: ErrorCode::KeyDoesNotExist,
+                    text: error_text,
+                }
             }
         };
 
         let msg_response = Message {
-            src: msg.dest.clone(),
-            dest: msg.src.clone(),
+            src: dest,
+            dest: src,
             body: msg_response_body,
-        };
-        self.stub.send_message(&msg_response)
-    }
-
-    fn handle_init(&mut self, msg: &Message) -> Result<()> {
-        self.id = msg.body.field_as_str("node_id")?.to_string();
-        eprintln!("Initialized node #{}", self.id);
-
-        let msg_response = Message {
-            src: msg.dest.clone(),
-            dest: msg.src.clone(),
-            body: MessageBody::new(
-                "init_ok",
-                self.acquire_message_id(),
-                msg.body.msg_id(),
-                HashMap::new(),
-            ),
         };
         self.stub.send_message(&msg_response)
     }

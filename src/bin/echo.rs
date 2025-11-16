@@ -1,7 +1,36 @@
-use maelstrom_rust::{Message, MessageBody, Stub};
+use maelstrom_rust::{Message, Stub};
 
 use anyhow::Result;
-use std::{collections::HashMap, io};
+use std::io;
+
+#[derive(serde::Deserialize, serde::Serialize, Debug)]
+#[serde(tag = "type")]
+#[serde(rename_all = "snake_case")]
+enum Request {
+    Init {
+        msg_id: u64,
+        node_id: String,
+    },
+    Echo {
+        msg_id: u64,
+        echo: serde_json::Value,
+    },
+}
+
+#[derive(serde::Deserialize, serde::Serialize, Debug)]
+#[serde(tag = "type")]
+#[serde(rename_all = "snake_case")]
+enum Response {
+    InitOk {
+        msg_id: u64,
+        in_reply_to: u64,
+    },
+    EchoOk {
+        msg_id: u64,
+        in_reply_to: u64,
+        echo: serde_json::Value,
+    },
+}
 
 struct EchoNode {
     stub: Stub,
@@ -20,46 +49,52 @@ impl EchoNode {
 
     fn run(mut self) -> Result<()> {
         loop {
-            let msg = self.stub.get_message()?;
-            let typ = msg.body.typ();
-            match typ {
-                "init" => self.handle_init(&msg)?,
-                "echo" => self.handle_echo(&msg)?,
-                _ => return Err(anyhow::anyhow!("Unknown message type: {}", typ)),
+            let Message { src, dest, body } = self.stub.get_message::<Request>()?;
+            match body {
+                Request::Init { msg_id, node_id } => {
+                    self.handle_init(src, dest, msg_id, node_id)?
+                }
+                Request::Echo { msg_id, echo } => self.handle_echo(src, dest, msg_id, echo)?,
             }
         }
     }
 
-    fn handle_init(&mut self, msg: &Message) -> Result<()> {
-        self.id = msg.body.field_as_str("node_id")?.to_string();
+    fn handle_init(
+        &mut self,
+        src: String,
+        dest: String,
+        msg_id: u64,
+        node_id: String,
+    ) -> Result<()> {
+        self.id = node_id;
         eprintln!("Initialized node #{}", self.id);
 
         let msg_response = Message {
-            src: msg.dest.clone(),
-            dest: msg.src.clone(),
-            body: MessageBody::new(
-                "init_ok",
-                self.acquire_message_id(),
-                msg.body.msg_id(),
-                HashMap::new(),
-            ),
+            src: dest,
+            dest: src,
+            body: Response::InitOk {
+                msg_id: self.acquire_message_id(),
+                in_reply_to: msg_id,
+            },
         };
         self.stub.send_message(&msg_response)
     }
 
-    fn handle_echo(&mut self, msg: &Message) -> Result<()> {
-        let mut extra = HashMap::new();
-        extra.insert("echo".to_string(), msg.body.field("echo")?.clone());
-
+    fn handle_echo(
+        &mut self,
+        src: String,
+        dest: String,
+        msg_id: u64,
+        echo: serde_json::Value,
+    ) -> Result<()> {
         let msg_response = Message {
-            src: msg.dest.clone(),
-            dest: msg.src.clone(),
-            body: MessageBody::new(
-                "echo_ok",
-                self.acquire_message_id(),
-                msg.body.msg_id(),
-                extra,
-            ),
+            src: dest,
+            dest: src,
+            body: Response::EchoOk {
+                msg_id: self.acquire_message_id(),
+                in_reply_to: msg_id,
+                echo,
+            },
         };
         self.stub.send_message(&msg_response)
     }

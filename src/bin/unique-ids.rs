@@ -1,7 +1,30 @@
-use maelstrom_rust::{Message, MessageBody, Stub};
+use maelstrom_rust::{Message, Stub};
 
 use anyhow::Result;
-use std::{collections::HashMap, io};
+use std::io;
+
+#[derive(serde::Deserialize, serde::Serialize, Debug)]
+#[serde(tag = "type")]
+#[serde(rename_all = "snake_case")]
+enum Request {
+    Init { msg_id: u64, node_id: String },
+    Generate { msg_id: u64 },
+}
+
+#[derive(serde::Deserialize, serde::Serialize, Debug)]
+#[serde(tag = "type")]
+#[serde(rename_all = "snake_case")]
+enum Response {
+    InitOk {
+        msg_id: u64,
+        in_reply_to: u64,
+    },
+    GenerateOk {
+        msg_id: u64,
+        in_reply_to: u64,
+        id: String,
+    },
+}
 
 struct UniqueIdsNode {
     stub: Stub,
@@ -22,48 +45,49 @@ impl UniqueIdsNode {
 
     fn run(mut self) -> Result<()> {
         loop {
-            let msg = self.stub.get_message()?;
-            let typ = msg.body.typ();
-            match typ {
-                "init" => self.handle_init(&msg)?,
-                "generate" => self.handle_generate(&msg)?,
-                _ => return Err(anyhow::anyhow!("Unknown message type: {}", typ)),
+            let Message { src, dest, body } = self.stub.get_message::<Request>()?;
+            match body {
+                Request::Init { msg_id, node_id } => {
+                    self.handle_init(src, dest, msg_id, node_id)?
+                }
+                Request::Generate { msg_id } => self.handle_generate(src, dest, msg_id)?,
             }
         }
     }
 
-    fn handle_init(&mut self, msg: &Message) -> Result<()> {
-        self.id = msg.body.field_as_str("node_id")?.to_string();
+    fn handle_init(
+        &mut self,
+        src: String,
+        dest: String,
+        msg_id: u64,
+        node_id: String,
+    ) -> Result<()> {
+        self.id = node_id;
         eprintln!("Initialized node #{}", self.id);
 
         let msg_response = Message {
-            src: msg.dest.clone(),
-            dest: msg.src.clone(),
-            body: MessageBody::new(
-                "init_ok",
-                self.acquire_message_id(),
-                msg.body.msg_id(),
-                HashMap::new(),
-            ),
+            src: dest,
+            dest: src,
+            body: Response::InitOk {
+                msg_id: self.acquire_message_id(),
+                in_reply_to: msg_id,
+            },
         };
         self.stub.send_message(&msg_response)
     }
 
-    fn handle_generate(&mut self, msg: &Message) -> Result<()> {
+    fn handle_generate(&mut self, src: String, dest: String, msg_id: u64) -> Result<()> {
         let id = format!("{}-{}", self.id, self.n);
         self.n += 1;
 
-        let mut extra = HashMap::new();
-        extra.insert("id".to_string(), serde_json::json!(id));
         let msg_response = Message {
-            src: msg.dest.clone(),
-            dest: msg.src.clone(),
-            body: MessageBody::new(
-                "generate_ok",
-                self.acquire_message_id(),
-                msg.body.msg_id(),
-                extra,
-            ),
+            src: dest,
+            dest: src,
+            body: Response::GenerateOk {
+                msg_id: self.acquire_message_id(),
+                in_reply_to: msg_id,
+                id,
+            },
         };
         self.stub.send_message(&msg_response)
     }
