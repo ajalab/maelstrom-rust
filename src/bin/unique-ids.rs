@@ -26,16 +26,16 @@ enum Response {
     },
 }
 
-struct UniqueIdsNode {
+struct Node {
     stub: Stub,
     id: String,
     next_message_id: u64,
     n: u64,
 }
 
-impl UniqueIdsNode {
+impl Node {
     fn new(stub: Stub) -> Self {
-        UniqueIdsNode {
+        Node {
             stub,
             id: String::new(),
             next_message_id: 1,
@@ -101,6 +101,6 @@ impl UniqueIdsNode {
 
 fn main() -> Result<()> {
     let stub = Stub::new(io::stdin().lock(), io::stdout().lock());
-    let node = UniqueIdsNode::new(stub);
+    let node = Node::new(stub);
     node.run()
 }

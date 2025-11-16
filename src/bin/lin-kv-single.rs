@@ -57,7 +57,7 @@ enum Response {
     },
 }
 
-struct LinKvSingleNode {
+struct Node {
     stub: Stub,
     id: String,
     next_message_id: u64,
@@ -65,9 +65,9 @@ struct LinKvSingleNode {
     map: HashMap<u64, i64>,
 }
 
-impl LinKvSingleNode {
+impl Node {
     fn new(stub: Stub) -> Self {
-        LinKvSingleNode {
+        Node {
             stub,
             id: String::new(),
             next_message_id: 1,
@@ -221,6 +221,6 @@ impl LinKvSingleNode {
 
 fn main() -> Result<()> {
     let stub = Stub::new(io::stdin().lock(), io::stdout().lock());
-    let node = LinKvSingleNode::new(stub);
+    let node = Node::new(stub);
     node.run()
 }

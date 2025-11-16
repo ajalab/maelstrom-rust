@@ -32,15 +32,15 @@ enum Response {
     },
 }
 
-struct EchoNode {
+struct Node {
     stub: Stub,
     id: String,
     next_message_id: u64,
 }
 
-impl EchoNode {
+impl Node {
     fn new(stub: Stub) -> Self {
-        EchoNode {
+        Node {
             stub,
             id: String::new(),
             next_message_id: 1,
@@ -108,6 +108,6 @@ impl EchoNode {
 
 fn main() -> Result<()> {
     let stub = Stub::new(io::stdin().lock(), io::stdout().lock());
-    let node = EchoNode::new(stub);
+    let node = Node::new(stub);
     node.run()
 }
