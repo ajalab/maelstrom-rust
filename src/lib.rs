@@ -3,14 +3,14 @@ use serde_repr::{Deserialize_repr, Serialize_repr};
 use std::io::{BufRead, StdinLock, StdoutLock, Write};
 
 #[repr(u8)]
-#[derive(Clone, Copy, Debug, Serialize_repr, Deserialize_repr)]
+#[derive(Clone, Copy, Serialize_repr, Deserialize_repr)]
 pub enum ErrorCode {
     Crash = 14,
     KeyDoesNotExist = 20,
     PreconditionFailed = 22,
 }
 
-#[derive(serde::Deserialize, serde::Serialize, Debug)]
+#[derive(serde::Deserialize, serde::Serialize)]
 pub struct Message<T> {
     pub src: String,
     pub dest: String,

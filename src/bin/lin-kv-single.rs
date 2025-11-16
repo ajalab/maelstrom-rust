@@ -3,7 +3,7 @@ use maelstrom_rust::{ErrorCode, Message, Stub};
 use anyhow::Result;
 use std::{collections::HashMap, io};
 
-#[derive(serde::Deserialize, serde::Serialize, Debug)]
+#[derive(serde::Deserialize, serde::Serialize)]
 #[serde(tag = "type")]
 #[serde(rename_all = "snake_case")]
 enum Request {
@@ -28,7 +28,7 @@ enum Request {
     },
 }
 
-#[derive(serde::Deserialize, serde::Serialize, Debug)]
+#[derive(serde::Deserialize, serde::Serialize)]
 #[serde(tag = "type")]
 #[serde(rename_all = "snake_case")]
 enum Response {
