@@ -23,6 +23,12 @@ pub struct Stub {
     stdout: Stdout,
 }
 
+impl Default for Stub {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Stub {
     pub fn new() -> Self {
         Stub {

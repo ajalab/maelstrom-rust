@@ -450,7 +450,7 @@ impl Node {
         let mut match_index = 0;
 
         if term == state.current_term {
-            if state.leader == None {
+            if state.leader.is_none() {
                 state.leader = Some(src.clone());
             }
             if state.role == Role::Follower {
@@ -697,7 +697,7 @@ impl Node {
         let value = map.get(&key).copied();
 
         Box::new(move |new_msg_id| {
-            let msg_response_body = if let Some(value) = value {
+            if let Some(value) = value {
                 MessageBody::ReadOk {
                     msg_id: new_msg_id,
                     in_reply_to: msg_id,
@@ -710,8 +710,7 @@ impl Node {
                     code: ErrorCode::KeyDoesNotExist,
                     text: "key does not exist".to_string(),
                 }
-            };
-            msg_response_body
+            }
         })
     }
 
@@ -799,15 +798,14 @@ impl Node {
         match_index.sort_unstable_by(|a, b| b.cmp(a));
         let majority_index = match_index[self.member_ids.len() / 2];
 
-        if majority_index > state.commit_index {
-            if let Some(entry) = state.log.get(majority_index) {
-                if entry.term == state.current_term {
-                    state.commit_index = majority_index;
-                    self.apply_committed_entries_notify
-                        .as_ref()
-                        .map(|n| n.send(()));
-                }
-            }
+        if majority_index > state.commit_index
+            && let Some(entry) = state.log.get(majority_index)
+            && entry.term == state.current_term
+        {
+            state.commit_index = majority_index;
+            self.apply_committed_entries_notify
+                .as_ref()
+                .map(|n| n.send(()));
         }
     }
 }
