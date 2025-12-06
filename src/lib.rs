@@ -5,12 +5,13 @@ use std::io::{Stdin, Stdout, Write, stdin, stdout};
 #[repr(u8)]
 #[derive(Clone, Copy, Serialize_repr, Deserialize_repr)]
 pub enum ErrorCode {
+    TemporarilyUnavailable = 11,
     Crash = 14,
     KeyDoesNotExist = 20,
     PreconditionFailed = 22,
 }
 
-#[derive(serde::Deserialize, serde::Serialize)]
+#[derive(Clone, serde::Deserialize, serde::Serialize)]
 pub struct Message<T> {
     pub src: String,
     pub dest: String,
