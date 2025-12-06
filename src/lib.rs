@@ -1,6 +1,6 @@
 use anyhow::Result;
 use serde_repr::{Deserialize_repr, Serialize_repr};
-use std::io::{BufRead, StdinLock, StdoutLock, Write};
+use std::io::{Stdin, Stdout, Write, stdin, stdout};
 
 #[repr(u8)]
 #[derive(Clone, Copy, Serialize_repr, Deserialize_repr)]
@@ -18,13 +18,16 @@ pub struct Message<T> {
 }
 
 pub struct Stub {
-    stdin: StdinLock<'static>,
-    stdout: StdoutLock<'static>,
+    stdin: Stdin,
+    stdout: Stdout,
 }
 
 impl Stub {
-    pub fn new(stdin: StdinLock<'static>, stdout: StdoutLock<'static>) -> Self {
-        Stub { stdin, stdout }
+    pub fn new() -> Self {
+        Stub {
+            stdin: stdin(),
+            stdout: stdout(),
+        }
     }
 
     pub fn get_message<T>(&mut self) -> Result<Message<T>>

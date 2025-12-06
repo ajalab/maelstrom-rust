@@ -1,7 +1,7 @@
 use maelstrom_rust::{ErrorCode, Message, Stub};
 
 use anyhow::Result;
-use std::{collections::HashMap, io};
+use std::collections::HashMap;
 
 #[derive(serde::Deserialize, serde::Serialize)]
 #[serde(tag = "type")]
@@ -66,9 +66,9 @@ struct Node {
 }
 
 impl Node {
-    fn new(stub: Stub) -> Self {
+    fn new() -> Self {
         Node {
-            stub,
+            stub: Stub::new(),
             id: String::new(),
             next_message_id: 1,
             map: HashMap::new(),
@@ -220,7 +220,6 @@ impl Node {
 }
 
 fn main() -> Result<()> {
-    let stub = Stub::new(io::stdin().lock(), io::stdout().lock());
-    let node = Node::new(stub);
+    let node = Node::new();
     node.run()
 }
