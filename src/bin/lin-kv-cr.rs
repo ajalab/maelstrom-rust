@@ -1,7 +1,7 @@
 use maelstrom_rust::{ErrorCode, Message, Stub};
 
 use anyhow::Result;
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 
 #[derive(Clone, serde::Deserialize, serde::Serialize)]
 #[serde(tag = "type")]
@@ -48,10 +48,35 @@ enum MessageBody {
         msg_id: u64,
         key: u64,
         value: i64,
+        version: u64,
         rpc_type: String,
         rpc_msg_id: u64,
         rpc_src: String,
     },
+}
+
+struct MultiVersionMap {
+    map: BTreeMap<(u64, u64), i64>,
+}
+
+impl MultiVersionMap {
+    fn new() -> Self {
+        MultiVersionMap {
+            map: BTreeMap::new(),
+        }
+    }
+
+    fn insert(&mut self, key: u64, version: u64, value: i64) {
+        self.map.insert((key, version), value);
+    }
+
+    fn get_latest(&self, key: u64) -> Option<i64> {
+        self.map
+            .range((key, 0)..=(key, u64::MAX))
+            .rev()
+            .next()
+            .map(|(_, &v)| v)
+    }
 }
 
 #[derive(Default)]
@@ -95,7 +120,8 @@ struct Node {
     next_message_id: u64,
 
     chain: Chain,
-    map: HashMap<u64, i64>,
+    map: MultiVersionMap,
+    next_version: u64,
 }
 
 impl Node {
@@ -104,8 +130,9 @@ impl Node {
             stub: Stub::new(),
             id: String::new(),
             next_message_id: 1,
-            map: HashMap::new(),
+            map: MultiVersionMap::new(),
             chain: Chain::default(),
+            next_version: 1,
         }
     }
 
@@ -132,10 +159,11 @@ impl Node {
                     msg_id: _,
                     key,
                     value,
+                    version,
                     rpc_type,
                     rpc_msg_id,
                     rpc_src,
-                } => self.handle_replicate(key, value, rpc_type, rpc_msg_id, rpc_src)?,
+                } => self.handle_replicate(key, value, version, rpc_type, rpc_msg_id, rpc_src)?,
                 _ => unreachable!(),
             }
         }
@@ -175,7 +203,7 @@ impl Node {
             return self.stub.send_message(&msg_forward);
         }
 
-        let value = self.map.get(&key).copied();
+        let value = self.map.get_latest(key);
         let msg_response_body = if let Some(v) = value {
             MessageBody::ReadOk {
                 msg_id: self.acquire_message_id(),
@@ -215,7 +243,9 @@ impl Node {
             };
             return self.stub.send_message(&msg_forward);
         }
-        self.handle_replicate(key, value, "write".to_string(), msg_id, src)
+
+        let version = self.acquire_version();
+        self.handle_replicate(key, value, version, "write".to_string(), msg_id, src)
     }
 
     fn handle_cas(
@@ -241,7 +271,7 @@ impl Node {
             return self.stub.send_message(&msg_forward);
         }
 
-        let value = self.map.get(&key).copied();
+        let value = self.map.get_latest(key);
         let msg_error_body = match value {
             Some(v) if v != from => {
                 let error_text =
@@ -274,18 +304,20 @@ impl Node {
             return self.stub.send_message(&msg_response);
         }
 
-        self.handle_replicate(key, to, "cas".to_string(), msg_id, src)
+        let version = self.acquire_version();
+        self.handle_replicate(key, to, version, "cas".to_string(), msg_id, src)
     }
 
     fn handle_replicate(
         &mut self,
         key: u64,
         value: i64,
+        version: u64,
         rpc_type: String,
         rpc_msg_id: u64,
         rpc_src: String,
     ) -> Result<()> {
-        self.map.insert(key, value);
+        self.map.insert(key, version, value);
 
         if let Some(next) = &self.chain.next {
             let msg_forward = Message {
@@ -295,6 +327,7 @@ impl Node {
                     msg_id: self.acquire_message_id(),
                     key,
                     value,
+                    version,
                     rpc_type,
                     rpc_msg_id,
                     rpc_src,
@@ -327,6 +360,12 @@ impl Node {
         let msg_id = self.next_message_id;
         self.next_message_id += 1;
         msg_id
+    }
+
+    fn acquire_version(&mut self) -> u64 {
+        let version = self.next_version;
+        self.next_version += 1;
+        version
     }
 }
 
