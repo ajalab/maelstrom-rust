@@ -15,7 +15,10 @@ As of this writing, this implementation does not persist data.
 A distributed key-value store that replicates data using the [Raft](https://raft.github.io/) consensus algorithm.
 As of this writing, this implementation does not persist data.
 
-Example: run a 30-second test with 5 nodes while injecting network partition faults every 1 second.
+## Running with Maelstrom
+
+Use Maelstrom to run the implementations against the `lin-kv` workload.
+For example, the following runs a 30-second test of `lin-kv-raft` with five nodes while injecting network partition faults every second:
 
 ```shell
 path/to/maelstrom test -w lin-kv --bin target/release/lin-kv-raft --time-limit 30 --node-count 5 --concurrency 2n --log-stderr --nemesis partition --nemesis-interval 1
