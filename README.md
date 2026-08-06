@@ -11,6 +11,14 @@ As of this writing, none of the implementations persist data.
 
 A simple key-value store that does not replicate data to other nodes and therefore does not guarantee linearizability when run on more than one node.
 
+### [lin-kv-cr](./src/bin/lin-kv-cr.rs)
+
+A distributed key-value store that replicates data using [Chain Replication](https://www.usenix.org/conference/osdi-04/chain-replication-supporting-high-throughput-and-availability).
+
+Nodes form a static chain in the order supplied during initialization.
+Writes and compare-and-swap requests are routed to the head, then replicated through each successor; the tail replies to the client only after applying the update.
+Reads are routed to the tail, which serves the most recently replicated value.
+
 ### [lin-kv-raft-request-log](./src/bin/lin-kv-raft-request-log.rs)
 
 A distributed key-value store that replicates data using the [Raft](https://raft.github.io/) consensus algorithm.
