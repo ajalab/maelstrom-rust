@@ -5,7 +5,10 @@ Its primary goal is to explore and compare various replication protocols under t
 
 ## Implementations
 
-As of this writing, none of the implementations persist data.
+Each implementation is written to be as compact and self-contained as possible.
+
+> [!NOTE]
+> As of this writing, none of the implementations persist data.
 
 ### [lin-kv-single](./src/bin/lin-kv-single.rs)
 
