@@ -1,0 +1,4 @@
+interface:
+  display_name: "Maelstrom"
+  short_description: "Run Maelstrom distributed-system evaluations."
+  default_prompt: "Use $maelstrom to evaluate this node binary with a Maelstrom workload."
